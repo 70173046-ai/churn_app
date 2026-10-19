@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Customer Churn Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-scroll="{{ 'result' if result else ('errors' if errors else '') }}">
+
+{# ---------- reusable form pieces ---------- #}
+{% macro field_error(name) %}
+  {% if errors.get(name) %}<p class="field-error" id="err-{{ name }}">{{ errors[name] }}</p>{% endif %}
+{% endmacro %}
+
+{% macro select(name, label, hint="") %}
+  <div class="field {% if errors.get(name) %}has-error{% endif %}">
+    <label for="{{ name }}">{{ label }}</label>
+    <select id="{{ name }}" name="{{ name }}">
+      <option value="" disabled {% if not values.get(name) %}selected{% endif %}>Choose…</option>
+      {% for option in choices[name] %}
+        {% if name == 'SeniorCitizen' %}
+          <option value="{{ option }}" {% if values.get(name) == option %}selected{% endif %}>{{ 'Yes' if option == '1' else 'No' }}</option>
+        {% else %}
+          <option value="{{ option }}" {% if values.get(name) == option %}selected{% endif %}>{{ option }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+    {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+    {{ field_error(name) }}
+  </div>
+{% endmacro %}
+
+{% macro number(name, label, hint, low, high, step) %}
+  <div class="field {% if errors.get(name) %}has-error{% endif %}">
+    <label for="{{ name }}">{{ label }}</label>
+    <input type="number" id="{{ name }}" name="{{ name }}" min="{{ low }}" max="{{ high }}" step="{{ step }}"
+           inputmode="decimal" value="{{ values.get(name, '') }}">
+    <p class="hint">{{ hint }}</p>
+    {{ field_error(name) }}
+  </div>
+{% endmacro %}
+
+<header class="site-header">
+  <h1>Customer churn predictor</h1>
+  <p>Enter a telecom customer's details to see whether they are likely to cancel their service.</p>
+</header>
+
+<main class="layout">
+
+  <form method="post" action="{{ url_for('index') }}" class="card form-card" id="churn-form" novalidate>
+
+    <div class="examples">
+      <span>Try an example:</span>
+      <button type="button" class="btn-link" data-example="risk">New customer, month-to-month</button>
+      <button type="button" class="btn-link" data-example="loyal">Loyal customer, two-year contract</button>
+    </div>
+
+    {% if errors %}
+    <div class="alert" role="alert">
+      {% if errors.get('_form') %}
+        {{ errors['_form'] }}
+      {% else %}
+        Please fix the {{ errors|length }} highlighted {{ 'field' if errors|length == 1 else 'fields' }} below and submit again.
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <fieldset>
+      <legend>Customer</legend>
+      <div class="grid">
+        {{ select('gender', 'Gender') }}
+        {{ select('SeniorCitizen', 'Senior citizen', 'Aged 65 or older') }}
+        {{ select('Partner', 'Has a partner') }}
+        {{ select('Dependents', 'Has dependents') }}
+        {{ number('tenure', 'Tenure (months)', 'How long they have been a customer, 0 to 72', 0, 72, 1) }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Services</legend>
+      <div class="grid">
+        {{ select('PhoneService', 'Phone service') }}
+        {{ select('MultipleLines', 'Multiple lines') }}
+        {{ select('InternetService', 'Internet service') }}
+        {{ select('OnlineSecurity', 'Online security') }}
+        {{ select('OnlineBackup', 'Online backup') }}
+        {{ select('DeviceProtection', 'Device protection') }}
+        {{ select('TechSupport', 'Tech support') }}
+        {{ select('StreamingTV', 'Streaming TV') }}
+        {{ select('StreamingMovies', 'Streaming movies') }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Contract and billing</legend>
+      <div class="grid">
+        {{ select('Contract', 'Contract length') }}
+        {{ select('PaperlessBilling', 'Paperless billing') }}
+        {{ select('PaymentMethod', 'Payment method') }}
+        {{ number('MonthlyCharges', 'Monthly charges ($)', 'Current monthly bill', 0, 500, 0.01) }}
+        {{ number('TotalCharges', 'Total charges ($)', 'Everything billed so far', 0, 50000, 0.01) }}
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="btn-primary">Predict churn</button>
+      <button type="button" class="btn-secondary" id="reset-btn">Clear form</button>
+    </div>
+  </form>
+
+  <aside class="result-col" id="result" aria-live="polite">
+    {% if result %}
+      <div class="card result {{ 'is-churn' if result.is_churn else 'is-stay' }}">
+        <p class="result-kicker">Prediction</p>
+        <p class="result-label">{{ result.label }}</p>
+        <p class="result-headline">{{ result.headline }}</p>
+
+        <div class="meter" role="img" aria-label="Churn probability {{ result.probability }} percent">
+          <div class="meter-fill" data-percent="{{ result.probability }}"></div>
+        </div>
+        <dl class="result-stats">
+          <div><dt>Churn probability</dt><dd>{{ result.probability }}%</dd></div>
+          <div><dt>Risk level</dt><dd>{{ result.risk }}</dd></div>
+        </dl>
+        <p class="result-advice">{{ result.advice }}</p>
+      </div>
+    {% else %}
+      <div class="card result-empty">
+        <p class="result-empty-title">No prediction yet</p>
+        <p>Fill in the form and choose <strong>Predict churn</strong>. The result appears here.</p>
+      </div>
+    {% endif %}
+  </aside>
+
+</main>
+
+<footer class="site-footer">
+  <p>Predictions come from a Logistic Regression model trained on the Telco Customer Churn dataset. They are estimates, not guarantees.</p>
+</footer>
+
+<script>
+  /* ---- example customers (taken from the notebook's sample test) ---- */
+  const EXAMPLES = {
+    risk: {
+      gender: "Female", SeniorCitizen: "0", Partner: "Yes", Dependents: "No", tenure: "1",
+      PhoneService: "Yes", MultipleLines: "No", InternetService: "Fiber optic",
+      OnlineSecurity: "No", OnlineBackup: "No", DeviceProtection: "No", TechSupport: "No",
+      StreamingTV: "No", StreamingMovies: "No", Contract: "Month-to-month",
+      PaperlessBilling: "Yes", PaymentMethod: "Electronic check",
+      MonthlyCharges: "70.35", TotalCharges: "70.35"
+    },
+    loyal: {
+      gender: "Male", SeniorCitizen: "0", Partner: "Yes", Dependents: "Yes", tenure: "48",
+      PhoneService: "Yes", MultipleLines: "Yes", InternetService: "DSL",
+      OnlineSecurity: "Yes", OnlineBackup: "Yes", DeviceProtection: "Yes", TechSupport: "Yes",
+      StreamingTV: "No", StreamingMovies: "No", Contract: "Two year",
+      PaperlessBilling: "No", PaymentMethod: "Credit card (automatic)",
+      MonthlyCharges: "65.20", TotalCharges: "3129.60"
+    }
+  };
+
+  const form = document.getElementById("churn-form");
+  const ADDONS = ["OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies"];
+
+  /* Every lookup is guarded: if a control is missing, it is skipped instead of crashing the page */
+  const field = name => (form ? form.elements.namedItem(name) : null);
+
+  /* Lock answers that follow from earlier ones (no phone -> no multiple lines, etc.).
+     The server applies the same rules, so this is only a convenience. */
+  function lock(name, forcedValue, locked) {
+    const el = field(name);
+    if (!el) return;
+    el.disabled = locked;
+    if (locked) { el.value = forcedValue; }
+    else if (el.value === forcedValue) { el.value = ""; }
+  }
+  function syncDependentFields() {
+    const phone = field("PhoneService");
+    const internet = field("InternetService");
+    lock("MultipleLines", "No phone service", !!phone && phone.value === "No");
+    ADDONS.forEach(n => lock(n, "No internet service", !!internet && internet.value === "No"));
+  }
+  ["PhoneService", "InternetService"].forEach(n => {
+    const el = field(n);
+    if (el) el.addEventListener("change", syncDependentFields);
+  });
+
+  function fillExample(key) {
+    const ex = EXAMPLES[key];
+    Object.keys(ex).forEach(n => {
+      const el = field(n);
+      if (el) { el.disabled = false; el.value = ex[n]; }
+    });
+    syncDependentFields();
+  }
+  document.querySelectorAll("[data-example]").forEach(b =>
+    b.addEventListener("click", () => fillExample(b.dataset.example)));
+
+  /* Clear form: a normal reset() would keep the values the server sent back */
+  const resetBtn = document.getElementById("reset-btn");
+  if (resetBtn && form) {
+    resetBtn.addEventListener("click", () => {
+      Array.from(form.elements).forEach(el => {
+        if (el.tagName === "SELECT") { el.selectedIndex = 0; el.disabled = false; }
+        else if (el.tagName === "INPUT") { el.value = ""; }
+      });
+      document.querySelectorAll(".field-error, .alert").forEach(e => e.remove());
+      document.querySelectorAll(".has-error").forEach(e => e.classList.remove("has-error"));
+    });
+  }
+
+  syncDependentFields();
+
+  /* Fill the probability bar and bring the result (or the error box) into view */
+  const bar = document.querySelector(".meter-fill");
+  if (bar) { bar.style.width = bar.dataset.percent + "%"; }
+
+  const scrollTarget = { result: "#result", errors: ".alert" }[document.body.dataset.scroll];
+  if (scrollTarget) {
+    const target = document.querySelector(scrollTarget);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+</script>
+</body>
+</html>
